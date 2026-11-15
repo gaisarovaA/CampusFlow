@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CampusFlow — бронирование аудиторий</title>
+<style>
+  :root { --bg:#f4f6fb; --card:#fff; --ink:#1d2433; --mut:#6b7488; --pri:#3b5bdb; --ok:#2f9e44; --bad:#e03131; --line:#e3e7f0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 24px; display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:20px; color:var(--pri); flex:1; }
+  main { max-width:1000px; margin:20px auto; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--mut); gap:4px; }
+  input, select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  label.check { flex-direction:row; align-items:center; font-size:14px; color:var(--ink); gap:5px; }
+  button { font:inherit; padding:8px 14px; border:0; border-radius:8px; background:var(--pri); color:#fff; cursor:pointer; }
+  button.ghost { background:#eef1fb; color:var(--pri); }
+  button.danger { background:#fdeaea; color:var(--bad); }
+  nav { display:flex; gap:8px; margin-bottom:16px; }
+  nav button { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  nav button.on { background:var(--pri); color:#fff; }
+  .rooms { display:grid; grid-template-columns:repeat(auto-fill, minmax(290px, 1fr)); gap:12px; }
+  .room h3 { margin:0 0 2px; } .mut { color:var(--mut); font-size:13px; }
+  .tag { display:inline-block; background:#eef1fb; color:var(--pri); border-radius:6px; padding:2px 7px; font-size:12px; margin:6px 4px 6px 0; }
+  .chip { background:#e6f6ea; color:var(--ok); border:1px solid #b9e3c2; padding:4px 9px; margin:3px 4px 0 0; }
+  .chip:disabled { cursor:default; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px; }
+  .badge { padding:2px 8px; border-radius:10px; font-size:12px; }
+  .active { background:#e6f6ea; color:var(--ok); } .cancelled { background:#fdeaea; color:var(--bad); }
+  #toast { position:fixed; right:20px; bottom:20px; max-width:360px; padding:12px 16px; border-radius:10px; color:#fff; display:none; }
+  .hidden { display:none !important; }
+  #login { max-width:380px; margin:60px auto; }
+  #login .row { flex-direction:column; align-items:stretch; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CampusFlow</h1>
+  <span id="who" class="mut"></span>
+  <a href="/docs" target="_blank">API (Swagger)</a>
+  <button id="logout" class="ghost hidden">Выйти</button>
+</header>
+
+<main>
+  <!-- Вход -->
+  <div id="login" class="card">
+    <h2>Вход</h2>
+    <div class="row">
+      <label>Логин <input id="l-login" value="student1"></label>
+      <label>Пароль <input id="l-pass" type="password" value="student1"></label>
+      <button id="l-go">Войти</button>
+    </div>
+    <p class="mut">Демо-пользователи (пароль = логин):
+      <a href="#" data-fill="student1">student1</a>, <a href="#" data-fill="student2">student2</a>, <a href="#" data-fill="admin">admin</a></p>
+  </div>
+
+  <div id="app" class="hidden">
+    <nav id="tabs"></nav>
+
+    <!-- Поиск и бронирование -->
+    <section id="tab-search">
+      <div class="card">
+        <div class="row">
+          <label>Дата <input id="f-date" type="date"></label>
+          <label>Корпус <select id="f-building"><option value="">Все</option><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
+          <label>Мест не меньше <input id="f-cap" type="number" min="1" style="width:90px"></label>
+          <label>Свободна с <select id="f-from"></select></label>
+          <label>до <select id="f-to"></select></label>
+          <button id="f-go">Найти</button>
+        </div>
+        <div class="row" id="f-eq" style="margin-top:10px"></div>
+      </div>
+
+      <div id="book" class="card hidden">
+        <h3 id="book-title" style="margin-top:0"></h3>
+        <div class="row">
+          <label>Начало <select id="b-start"></select></label>
+          <label>Конец <select id="b-end"></select></label>
+          <label style="flex:1">Комментарий <input id="b-comment" placeholder="Например: подготовка к семинару"></label>
+          <button id="b-go">Забронировать</button>
+        </div>
+      </div>
+
+      <div id="rooms" class="rooms"></div>
+    </section>
+
+    <!-- Мои брони -->
+    <section id="tab-my" class="hidden">
+      <div class="card">
+        <label style="margin-bottom:10px">Статус <select id="my-status"><option value="">Все</option><option value="active">Активные</option><option value="cancelled">Отменённые</option></select></label>
+        <div id="my-list"></div>
+      </div>
+    </section>
+
+    <!-- Админ: все брони -->
+    <section id="tab-all" class="hidden">
+      <div class="card">
+        <div class="row" style="margin-bottom:10px">
+          <label>Дата <input id="a-date" type="date"></label>
+          <label>Статус <select id="a-status"><option value="">Все</option><option value="active">Активные</option><option value="cancelled">Отменённые</option></select></label>
+          <button id="a-go" class="ghost">Показать</button>
+        </div>
+        <div id="all-list"></div>
+      </div>
+    </section>
+
+    <!-- Админ: аудитории -->
+    <section id="tab-admin-rooms" class="hidden">
+      <div class="card">
+        <h3 id="r-title" style="margin-top:0">Новая аудитория</h3>
+        <div class="row">
+          <label>Название <input id="r-name" placeholder="D-201"></label>
+          <label>Корпус <select id="r-building"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
+          <label>Этаж <input id="r-floor" type="number" min="1" value="1" style="width:70px"></label>
+          <label>Вместимость <input id="r-cap" type="number" min="1" value="20" style="width:90px"></label>
+        </div>
+        <div class="row" id="r-eq" style="margin:10px 0"></div>
+        <button id="r-save">Сохранить</button> <button id="r-reset" class="ghost">Очистить</button>
+      </div>
+      <div class="card" id="r-list"></div>
+    </section>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const EQ = { projector: "Проектор", whiteboard: "Доска", computers: "Компьютеры", audio: "Звук", video: "Видео" };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const iso = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+
+let token = localStorage.getItem("token"), user = JSON.parse(localStorage.getItem("user") || "null");
+let sel = null;         // выбранная аудитория для брони: { room, date }
+let editingRoom = null; // id аудитории, которую правит админ
+
+// ---- Запросы к API: ошибки бросаются как объект {code, message, details} ----
+async function api(method, path, body) {
+  const res = await fetch("/api" + path, {
+    method,
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw data;
+  return data;
+}
+
+function toast(text, ok = true) {
+  const t = $("toast");
+  t.textContent = text; t.style.background = ok ? "var(--ok)" : "var(--bad)"; t.style.display = "block";
+  clearTimeout(t.timer); t.timer = setTimeout(() => t.style.display = "none", 4000);
+}
+// обёртка: показывает ошибку API как уведомление
+const safe = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message || "Ошибка сети", false); } };
+
+// ---- Вход / выход ----
+$("l-go").onclick = safe(async () => {
+  const r = await api("POST", "/auth/login", { login: $("l-login").value, password: $("l-pass").value });
+  token = r.token; user = r.user;
+  localStorage.setItem("token", token); localStorage.setItem("user", JSON.stringify(user));
+  start();
+});
+document.querySelectorAll("[data-fill]").forEach(a => a.onclick = e => {
+  e.preventDefault(); $("l-login").value = $("l-pass").value = a.dataset.fill;
+});
+$("logout").onclick = () => { localStorage.clear(); location.reload(); };
+
+// ---- Вкладки по ролям ----
+const TABS = {
+  student: [["search", "Поиск и бронь"], ["my", "Мои брони"]],
+  admin: [["search", "Аудитории и слоты"], ["all", "Все брони"], ["admin-rooms", "Управление аудиториями"]],
+};
+function showTab(name) {
+  ["search", "my", "all", "admin-rooms"].forEach(t => $("tab-" + t).classList.toggle("hidden", t !== name));
+  [...$("tabs").children].forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  if (name === "search") search();
+  if (name === "my") loadMy();
+  if (name === "all") loadAll();
+  if (name === "admin-rooms") loadAdminRooms();
+}
+function start() {
+  $("login").classList.add("hidden"); $("app").classList.remove("hidden"); $("logout").classList.remove("hidden");
+  $("who").textContent = user.displayName + " (" + user.role + ")";
+  $("tabs").innerHTML = TABS[user.role].map(([k, t]) => `<button data-tab="${k}">${t}</button>`).join("");
+  [...$("tabs").children].forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  showTab("search");
+}
+
+// ---- Поиск аудиторий ----
+const times = [];
+for (let m = 9 * 60; m <= 18 * 60; m += 30) times.push(String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"));
+const fillSelect = (id, list, any) => $(id).innerHTML = (any ? `<option value="">любое</option>` : "") + list.map(t => `<option>${t}</option>`).join("");
+fillSelect("f-from", times.slice(0, -1), true); fillSelect("f-to", times.slice(1), true);
+$("f-date").value = addDays(1); $("f-date").min = addDays(0);
+$("f-eq").innerHTML = Object.entries(EQ).map(([k, v]) => `<label class="check"><input type="checkbox" value="${k}">${v}</label>`).join("");
+$("r-eq").innerHTML = $("f-eq").innerHTML;
+
+$("f-go").onclick = () => search();
+const search = safe(async () => {
+  const date = $("f-date").value, from = $("f-from").value, to = $("f-to").value;
+  const p = new URLSearchParams();
+  if ($("f-building").value) p.set("building", $("f-building").value);
+  if ($("f-cap").value) p.set("minCapacity", $("f-cap").value);
+  const eq = [...$("f-eq").querySelectorAll("input:checked")].map(i => i.value);
+  if (eq.length) p.set("equipment", eq.join(","));
+
+  // 1) комнаты по фильтрам, 2) для каждой — свободные слоты на дату
+  const rooms = await api("GET", "/rooms?" + p);
+  const slots = await Promise.all(rooms.map(r => api("GET", `/rooms/${r.id}/free-slots?date=${date}`)));
+  let html = "";
+  rooms.forEach((r, i) => {
+    let free = slots[i].freeSlots;
+    if (from && to) free = free.filter(s => s.startTime <= from && s.endTime >= to); // окно целиком свободно
+    else if (from) free = free.filter(s => s.endTime > from);
+    if ((from || to) && !free.length) return; // комната не подходит по времени
+    const chips = free.length
+      ? free.map(s => `<button class="chip" ${user.role === "admin" ? "disabled" : ""} data-room="${r.id}" data-s="${s.startTime}" data-e="${s.endTime}">${s.startTime}–${s.endTime}</button>`).join("")
+      : `<span class="mut">Свободных слотов нет</span>`;
+    html += `<div class="card room"><h3>${esc(r.name)}</h3>
+      <div class="mut">Корпус ${r.building} · этаж ${r.floor} · ${r.capacity} мест</div>
+      <div>${r.equipment.map(e => `<span class="tag">${EQ[e]}</span>`).join("") || '<span class="mut">без оборудования</span>'}</div>
+      <div class="mut">Свободно ${date}:</div>${chips}</div>`;
+  });
+  $("rooms").innerHTML = html || `<div class="card mut">Ничего не найдено — попробуйте изменить фильтры</div>`;
+  $("rooms").dataset.rooms = JSON.stringify(rooms);
+  $("rooms").dataset.date = date;
+});
+
+// клик по свободному слоту → форма брони
+$("rooms").onclick = e => {
+  const b = e.target.closest(".chip");
+  if (!b || user.role === "admin") return;
+  const rooms = JSON.parse($("rooms").dataset.rooms), date = $("rooms").dataset.date;
+  const room = rooms.find(r => r.id == b.dataset.room);
+  let s = b.dataset.s, en = b.dataset.e;
+  const from = $("f-from").value, to = $("f-to").value;
+  if (from && to && from >= s && to <= en) { s = from; en = to; } // если задано окно — подставляем его
+  else en = times[Math.min(times.indexOf(s) + 2, times.indexOf(en))]; // иначе по умолчанию 1 час, можно поменять
+  sel = { room, date };
+  $("book-title").textContent = `Бронь: ${room.name}, ${date}`;
+  fillSelect("b-start", times.slice(0, -1)); fillSelect("b-end", times.slice(1));
+  $("b-start").value = s; $("b-end").value = en; $("b-comment").value = "";
+  $("book").classList.remove("hidden"); $("book").scrollIntoView({ behavior: "smooth" });
+};
+$("b-go").onclick = safe(async () => {
+  try {
+    await api("POST", "/bookings", { roomId: sel.room.id, date: sel.date, startTime: $("b-start").value, endTime: $("b-end").value, comment: $("b-comment").value });
+  } catch (e) {
+    if (e.code === "BOOKING_CONFLICT") { toast("Занято: " + e.message, false); search(); return; }
+    throw e;
+  }
+  toast("Забронировано: " + sel.room.name + " " + $("b-start").value + "–" + $("b-end").value);
+  $("book").classList.add("hidden"); search();
+});
+
+// ---- Таблица броней (общая для студента и админа) ----
+function bookingsTable(list, cancelPath, showUser) {
+  if (!list.length) return `<span class="mut">Броней нет</span>`;
+  return `<table><tr><th>Дата</th><th>Время</th><th>Аудитория</th>${showUser ? "<th>Кто</th>" : ""}<th>Комментарий</th><th>Статус</th><th></th></tr>` +
+    list.map(b => `<tr><td>${b.date}</td><td>${b.startTime}–${b.endTime}</td><td>${esc(b.roomName)}</td>
+      ${showUser ? `<td>${esc(b.userDisplayName)}</td>` : ""}<td>${esc(b.comment)}</td>
+      <td><span class="badge ${b.status}">${b.status === "active" ? "активна" : "отменена"}</span></td>
+      <td>${b.status === "active" ? `<button class="danger" data-cancel="${cancelPath}${b.id}">Отменить</button>` : ""}</td></tr>`).join("") + "</table>";
+}
+document.addEventListener("click", safe(async e => {
+  const path = e.target.dataset?.cancel;
+  if (!path) return;
+  await api("DELETE", path);
+  toast("Бронь отменена");
+  showTab(document.querySelector("nav .on").dataset.tab);
+}));
+
+const loadMy = safe(async () => {
+  const st = $("my-status").value;
+  $("my-list").innerHTML = bookingsTable(await api("GET", "/bookings/my" + (st ? "?status=" + st : "")), "/bookings/", false);
+});
+$("my-status").onchange = loadMy;
+
+const loadAll = safe(async () => {
+  const p = new URLSearchParams();
+  if ($("a-date").value) p.set("date", $("a-date").value);
+  if ($("a-status").value) p.set("status", $("a-status").value);
+  $("all-list").innerHTML = bookingsTable(await api("GET", "/admin/bookings?" + p), "/admin/bookings/", true);
+});
+$("a-go").onclick = loadAll;
+
+// ---- Админ: аудитории ----
+const loadAdminRooms = safe(async () => {
+  const rooms = await api("GET", "/rooms");
+  $("r-list").innerHTML = `<table><tr><th>Название</th><th>Корпус</th><th>Этаж</th><th>Мест</th><th>Оборудование</th><th></th></tr>` +
+    rooms.map(r => `<tr><td>${esc(r.name)}</td><td>${r.building}</td><td>${r.floor}</td><td>${r.capacity}</td>
+      <td>${r.equipment.map(e => EQ[e]).join(", ")}</td>
+      <td><button class="ghost" data-edit="${esc(JSON.stringify(r))}">Изменить</button> <button class="danger" data-del="${r.id}">Удалить</button></td></tr>`).join("") + "</table>";
+});
+$("r-list").onclick = safe(async e => {
+  if (e.target.dataset.edit) {
+    const r = JSON.parse(e.target.dataset.edit);
+    editingRoom = r.id; $("r-title").textContent = "Редактирование " + r.name;
+    $("r-name").value = r.name; $("r-building").value = r.building; $("r-floor").value = r.floor; $("r-cap").value = r.capacity;
+    $("r-eq").querySelectorAll("input").forEach(i => i.checked = r.equipment.includes(i.value));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  if (e.target.dataset.del && confirm("Удалить аудиторию?")) {
+    await api("DELETE", "/admin/rooms/" + e.target.dataset.del);
+    toast("Аудитория удалена"); loadAdminRooms();
+  }
+});
+function resetRoomForm() {
+  editingRoom = null; $("r-title").textContent = "Новая аудитория"; $("r-name").value = "";
+  $("r-eq").querySelectorAll("input").forEach(i => i.checked = false);
+}
+$("r-reset").onclick = resetRoomForm;
+$("r-save").onclick = safe(async () => {
+  const body = {
+    name: $("r-name").value, building: $("r-building").value, floor: +$("r-floor").value, capacity: +$("r-cap").value,
+    equipment: [...$("r-eq").querySelectorAll("input:checked")].map(i => i.value),
+  };
+  if (editingRoom) await api("PUT", "/admin/rooms/" + editingRoom, body); else await api("POST", "/admin/rooms", body);
+  toast("Сохранено"); resetRoomForm(); loadAdminRooms();
+});
+
+if (token && user) start();
+</script>
+</body>
+</html>

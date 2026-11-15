@@ -1,0 +1,1094 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "CampusFlow API",
+  "version": "1.0",
+  "description": "Бронирование аудиторий. Авторизация: кнопка Authorize → вставьте mock-token-student1 (или mock-token-student2, mock-token-admin)."
+ },
+ "servers": [
+  {
+   "url": "/api"
+  }
+ ],
+ "components": {
+  "securitySchemes": {
+   "bearerAuth": {
+    "type": "http",
+    "scheme": "bearer"
+   }
+  },
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string",
+      "example": "BOOKING_CONFLICT"
+     },
+     "message": {
+      "type": "string"
+     },
+     "details": {
+      "type": "object"
+     }
+    }
+   },
+   "User": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "login": {
+      "type": "string"
+     },
+     "displayName": {
+      "type": "string"
+     },
+     "role": {
+      "type": "string",
+      "enum": [
+       "student",
+       "admin"
+      ]
+     }
+    }
+   },
+   "Room": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "name": {
+      "type": "string",
+      "example": "A-101"
+     },
+     "building": {
+      "type": "string",
+      "enum": [
+       "A",
+       "B",
+       "C",
+       "D"
+      ]
+     },
+     "floor": {
+      "type": "integer"
+     },
+     "capacity": {
+      "type": "integer"
+     },
+     "equipment": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "projector",
+        "whiteboard",
+        "computers",
+        "audio",
+        "video"
+       ]
+      }
+     }
+    }
+   },
+   "RoomIn": {
+    "type": "object",
+    "required": [
+     "name",
+     "building",
+     "floor",
+     "capacity",
+     "equipment"
+    ],
+    "properties": {
+     "name": {
+      "type": "string",
+      "example": "D-201"
+     },
+     "building": {
+      "type": "string",
+      "example": "D"
+     },
+     "floor": {
+      "type": "integer",
+      "example": 2
+     },
+     "capacity": {
+      "type": "integer",
+      "example": 25
+     },
+     "equipment": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "example": [
+       "projector"
+      ]
+     }
+    }
+   },
+   "Booking": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "roomId": {
+      "type": "integer"
+     },
+     "roomName": {
+      "type": "string"
+     },
+     "userId": {
+      "type": "integer"
+     },
+     "userDisplayName": {
+      "type": "string"
+     },
+     "date": {
+      "type": "string",
+      "example": "2026-11-16"
+     },
+     "startTime": {
+      "type": "string",
+      "example": "14:00"
+     },
+     "endTime": {
+      "type": "string",
+      "example": "15:30"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "active",
+       "cancelled"
+      ]
+     },
+     "comment": {
+      "type": "string"
+     }
+    }
+   },
+   "BookingIn": {
+    "type": "object",
+    "required": [
+     "roomId",
+     "date",
+     "startTime",
+     "endTime"
+    ],
+    "properties": {
+     "roomId": {
+      "type": "integer",
+      "example": 1
+     },
+     "date": {
+      "type": "string",
+      "example": "2026-11-16"
+     },
+     "startTime": {
+      "type": "string",
+      "example": "14:00"
+     },
+     "endTime": {
+      "type": "string",
+      "example": "15:30"
+     },
+     "comment": {
+      "type": "string"
+     }
+    }
+   },
+   "Cancelled": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "status": {
+      "type": "string",
+      "example": "cancelled"
+     }
+    }
+   }
+  }
+ },
+ "paths": {
+  "/auth/login": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Вход (пароль = логин)",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "login": {
+          "type": "string",
+          "example": "student1"
+         },
+         "password": {
+          "type": "string",
+          "example": "student1"
+         }
+        }
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "token": {
+           "type": "string"
+          },
+          "user": {
+           "$ref": "#/components/schemas/User"
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/rooms": {
+   "get": {
+    "tags": [
+     "rooms"
+    ],
+    "summary": "Список аудиторий с фильтрами",
+    "parameters": [
+     {
+      "name": "building",
+      "in": "query",
+      "required": false,
+      "description": "A | B | C | D",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "minCapacity",
+      "in": "query",
+      "required": false,
+      "description": "Минимальная вместимость (> 0)",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "equipment",
+      "in": "query",
+      "required": false,
+      "description": "Через запятую, нужно всё: projector,whiteboard",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Room"
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/rooms/{id}": {
+   "get": {
+    "tags": [
+     "rooms"
+    ],
+    "summary": "Карточка аудитории",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Room"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Не найдено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/rooms/{id}/free-slots": {
+   "get": {
+    "tags": [
+     "rooms"
+    ],
+    "summary": "Свободные интервалы на дату (09:00–18:00)",
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "date",
+      "in": "query",
+      "required": true,
+      "description": "YYYY-MM-DD",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "roomId": {
+           "type": "integer"
+          },
+          "date": {
+           "type": "string"
+          },
+          "freeSlots": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "startTime": {
+              "type": "string"
+             },
+             "endTime": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Не найдено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/bookings": {
+   "post": {
+    "tags": [
+     "bookings"
+    ],
+    "summary": "Создать бронь (только студент)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BookingIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Создано",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Не найдено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "BOOKING_CONFLICT",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/bookings/my": {
+   "get": {
+    "tags": [
+     "bookings"
+    ],
+    "summary": "Мои брони",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "description": "active | cancelled",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Booking"
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/bookings/{id}": {
+   "delete": {
+    "tags": [
+     "bookings"
+    ],
+    "summary": "Отменить свою бронь",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Cancelled"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "BOOKING_NOT_FOUND",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "ALREADY_CANCELLED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/bookings": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Все брони (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "description": "YYYY-MM-DD",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "roomId",
+      "in": "query",
+      "required": false,
+      "description": "id аудитории",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "userId",
+      "in": "query",
+      "required": false,
+      "description": "id пользователя",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "description": "active | cancelled",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Booking"
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/bookings/{id}": {
+   "delete": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Отменить любую бронь (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Cancelled"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "BOOKING_NOT_FOUND",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "ALREADY_CANCELLED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/rooms": {
+   "post": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Создать аудиторию (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RoomIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Создано",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Room"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/rooms/{id}": {
+   "put": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Изменить аудиторию (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RoomIn"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Room"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Не найдено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Удалить аудиторию (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "id": {
+           "type": "integer"
+          },
+          "deleted": {
+           "type": "boolean"
+          }
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Не найдено",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "ROOM_HAS_ACTIVE_BOOKINGS",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}
