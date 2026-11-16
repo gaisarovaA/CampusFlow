@@ -1,11 +1,13 @@
 """CampusFlow MVP: бронирование аудиторий. Flask + SQLite, весь backend в одном файле."""
+import csv
+import io
 import os
 import re
 import sqlite3
 import threading
 from datetime import date, timedelta
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "campusflow.db")
@@ -109,7 +111,7 @@ def room_json(r):
             "capacity": r["capacity"], "equipment": r["equipment"].split(",") if r["equipment"] else []}
 
 
-BOOKING_SQL = ("SELECT b.*, r.name AS room_name, u.display_name FROM bookings b "
+BOOKING_SQL = ("SELECT b.*, r.name AS room_name, r.building, u.display_name FROM bookings b "
                "JOIN rooms r ON r.id = b.room_id JOIN users u ON u.id = b.user_id")
 
 
@@ -181,6 +183,19 @@ def check_future_date(d):
         raise bad("Дата в прошлом", {"date": d})
 
 
+def check_interval(day, start, end):
+    """Проверка даты и интервала; возвращает (начало, конец) в минутах."""
+    check_future_date(day)
+    s, e = to_min(start), to_min(end)
+    if s >= e:
+        raise bad("Время окончания должно быть позже начала")
+    if s % STEP or e % STEP:
+        raise bad("Время должно быть кратно 30 минутам")
+    if s < DAY_START or e > DAY_END:
+        raise bad("Бронировать можно только с 09:00 до 18:00")
+    return s, e
+
+
 def check_status(s):
     if s is not None and s not in ("active", "cancelled"):
         raise bad("status должен быть active или cancelled", {"status": s})
@@ -208,8 +223,8 @@ def login():
 
 
 # ---------- Rooms ----------
-@app.get("/api/rooms")
-def list_rooms():
+def filtered_rooms():
+    """Аудитории по фильтрам building / minCapacity / equipment из query-строки."""
     building = request.args.get("building")
     min_cap = request.args.get("minCapacity")
     equipment = [x for x in request.args.get("equipment", "").split(",") if x]
@@ -231,7 +246,24 @@ def list_rooms():
         if not all(x in room["equipment"] for x in equipment):  # должно быть всё оборудование из списка
             continue
         result.append(room)
-    return jsonify(result)
+    return result
+
+
+@app.get("/api/rooms")
+def list_rooms():
+    return jsonify(filtered_rooms())
+
+
+@app.get("/api/rooms/recommend")
+def recommend():
+    """До 3 свободных на интервал аудиторий; первой идёт самая маленькая из подходящих."""
+    day, start, end = request.args.get("date"), request.args.get("startTime"), request.args.get("endTime")
+    check_interval(day, start, end)
+    free = [r for r in filtered_rooms()
+            if not q("SELECT 1 FROM bookings WHERE room_id=? AND date=? AND status='active' "
+                     "AND start_time < ? AND end_time > ?", r["id"], day, end, start)]
+    free.sort(key=lambda r: (r["capacity"], r["name"]))
+    return jsonify(free[:3])
 
 
 @app.get("/api/rooms/<int:room_id>")
@@ -273,14 +305,7 @@ def create_booking():
     if not isinstance(comment, str):
         raise bad("comment должен быть строкой")
 
-    check_future_date(body["date"])
-    start, end = to_min(body["startTime"]), to_min(body["endTime"])
-    if start >= end:
-        raise bad("Время окончания должно быть позже начала")
-    if start % STEP or end % STEP:
-        raise bad("Время должно быть кратно 30 минутам")
-    if start < DAY_START or end > DAY_END:
-        raise bad("Бронировать можно только с 09:00 до 18:00")
+    check_interval(body["date"], body["startTime"], body["endTime"])
     get_room(body["roomId"])
 
     details = {"roomId": body["roomId"], "date": body["date"], "startTime": body["startTime"], "endTime": body["endTime"]}
@@ -326,9 +351,8 @@ def cancel_own(booking_id):
 
 
 # ---------- Admin ----------
-@app.get("/api/admin/bookings")
-def admin_bookings():
-    admin_user()
+def filtered_bookings():
+    """Брони по фильтрам date / roomId / userId / status из query-строки (для админа)."""
     status = request.args.get("status")
     check_status(status)
     sql, args = BOOKING_SQL + " WHERE 1=1", []
@@ -341,7 +365,49 @@ def admin_bookings():
         sql, args = sql + " AND b.user_id=?", args + [to_int(request.args["userId"], "userId")]
     if status:
         sql, args = sql + " AND b.status=?", args + [status]
-    return jsonify([booking_json(b) for b in q(sql + " ORDER BY b.date, b.start_time", *args)])
+    return q(sql + " ORDER BY b.date, b.start_time", *args)
+
+
+@app.get("/api/admin/bookings")
+def admin_bookings():
+    admin_user()
+    return jsonify([booking_json(b) for b in filtered_bookings()])
+
+
+@app.get("/api/admin/bookings/export.csv")
+def admin_export():
+    admin_user()
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["id", "room", "building", "date", "start", "end", "status", "user", "comment"])
+    for b in filtered_bookings():
+        comment = b["comment"]
+        if comment and comment[0] in "=+-@":  # защита от формул в Excel
+            comment = "'" + comment
+        writer.writerow([b["id"], b["room_name"], b["building"], b["date"], b["start_time"], b["end_time"],
+                         b["status"], b["display_name"], comment])
+    return Response("\ufeff" + out.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=bookings.csv"})
+
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    """Загрузка по дням и корпусам: занятые минуты / (аудиторий в корпусе * 9 часов)."""
+    admin_user()
+    rooms_in = {r["building"]: r["n"] for r in q("SELECT building, COUNT(*) AS n FROM rooms GROUP BY building")}
+    rows = {}
+    for b in q(BOOKING_SQL + " WHERE b.status='active'"):
+        row = rows.setdefault((b["date"], b["building"]), {"date": b["date"], "building": b["building"],
+                                                           "bookings": 0, "minutes": 0})
+        row["bookings"] += 1
+        row["minutes"] += to_min(b["end_time"]) - to_min(b["start_time"])
+    result = []
+    for key in sorted(rows):
+        row = rows[key]
+        row["loadPercent"] = round(100 * row["minutes"] / (rooms_in[row["building"]] * (DAY_END - DAY_START)), 1)
+        row["bookedHours"] = round(row.pop("minutes") / 60, 1)
+        result.append(row)
+    return jsonify({"rows": result})
 
 
 @app.delete("/api/admin/bookings/<int:booking_id>")
