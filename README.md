@@ -2,7 +2,7 @@
 
 Flask + SQLite (backend), один HTML-файл с JS без сборки (frontend), REST API с base URL `/api`.
 
-## Запуск
+## Запуск (≈2 минуты)
 
 ```bash
 pip install -r requirements.txt
