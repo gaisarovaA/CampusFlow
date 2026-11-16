@@ -1089,6 +1089,259 @@
      }
     }
    }
+  },
+  "/rooms/recommend": {
+   "get": {
+    "tags": [
+     "rooms"
+    ],
+    "summary": "До 3 свободных аудиторий на интервал (сначала самые маленькие из подходящих)",
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": true,
+      "description": "YYYY-MM-DD",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "startTime",
+      "in": "query",
+      "required": true,
+      "description": "HH:MM",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "endTime",
+      "in": "query",
+      "required": true,
+      "description": "HH:MM",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "building",
+      "in": "query",
+      "required": false,
+      "description": "A | B | C | D",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "minCapacity",
+      "in": "query",
+      "required": false,
+      "description": "Минимальная вместимость",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "equipment",
+      "in": "query",
+      "required": false,
+      "description": "Через запятую",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Room"
+         }
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/bookings/export.csv": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Экспорт броней в CSV (те же фильтры, что у /admin/bookings)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "parameters": [
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "description": "YYYY-MM-DD",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "roomId",
+      "in": "query",
+      "required": false,
+      "description": "id аудитории",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "userId",
+      "in": "query",
+      "required": false,
+      "description": "id пользователя",
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "description": "active | cancelled",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "CSV-файл",
+      "content": {
+       "text/csv": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "VALIDATION_ERROR",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/admin/stats": {
+   "get": {
+    "tags": [
+     "admin"
+    ],
+    "summary": "Статистика загрузки по дням и корпусам (admin)",
+    "security": [
+     {
+      "bearerAuth": []
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "properties": {
+          "rows": {
+           "type": "array",
+           "items": {
+            "type": "object",
+            "properties": {
+             "date": {
+              "type": "string"
+             },
+             "building": {
+              "type": "string"
+             },
+             "bookings": {
+              "type": "integer"
+             },
+             "bookedHours": {
+              "type": "number"
+             },
+             "loadPercent": {
+              "type": "number",
+              "description": "занятые часы / (аудиторий в корпусе * 9 ч)"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "401": {
+      "description": "UNAUTHORIZED",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "403": {
+      "description": "FORBIDDEN",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  }
 }
